@@ -1537,6 +1537,38 @@ void DEMSolver::SetAdaptiveTimeStepType(const std::string& type) {
                        type.c_str());
     }
 }
+void DEMSolver::SetAdaptiveTimeStepMaxVelParams(double min_ts,
+                                                float vel_low,
+                                                float vel_high,
+                                                float growth_factor) {
+    // DEME_ASYNC_MAXVEL_PATCH: native adaptive public API.
+    if (!(min_ts > 0.0))
+        DEME_ERROR("Adaptive minimum time step must be > 0.");
+    if (!(vel_low >= 0.f) || !(vel_high > vel_low))
+        DEME_ERROR("Adaptive velocity thresholds require 0 <= vel_low < vel_high.");
+    if (!(growth_factor > 1.f))
+        DEME_ERROR("Adaptive timestep growth_factor must be > 1.");
+    if (min_ts > m_ts_size)
+        DEME_ERROR("Adaptive minimum timestep (%g) exceeds configured maximum (%g).", min_ts, m_ts_size);
+
+    adaptive_ts_min = min_ts;
+    adaptive_ts_vel_low = vel_low;
+    adaptive_ts_vel_high = vel_high;
+    adaptive_ts_growth_factor = growth_factor;
+    adapt_ts_type = ADAPT_TS_TYPE::MAX_VEL;
+    ts_size_is_const = false;
+
+    if (sys_initialized) {
+        dT->solverFlags.isStepConst = false;
+        dT->adaptiveTsConfigured = true;
+        dT->adaptiveDtMin = min_ts;
+        dT->adaptiveDtMax = m_ts_size;
+        dT->adaptiveVelLow = vel_low;
+        dT->adaptiveVelHigh = vel_high;
+        dT->adaptiveGrowthFactor = growth_factor;
+    }
+}
+
 
 void DEMSolver::SetCDNumStepsMaxDriftHistorySize(unsigned int n) {
     if (n > NUM_STEPS_RESERVED_AFTER_RENEWING_FREQ_TUNER) {

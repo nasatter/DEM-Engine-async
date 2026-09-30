@@ -4,6 +4,7 @@
 //	SPDX-License-Identifier: BSD-3-Clause
 
 #include <numeric>
+#include <cmath>
 
 #include "API.h"
 #include "AuxClasses.h"
@@ -58,6 +59,13 @@ const std::string INSP_CODE_EVERYTHING_ABSV = R"V0G0N(
     double myABSV = sqrt(myVX * myVX + myVY * myVY + myVZ * myVZ);
 
     quantity[myOwner] = myABSV;
+)V0G0N";
+
+const std::string INSP_CODE_CLUMP_V2 = R"V0G0N(
+    double myVX = granData->vX[myOwner];
+    double myVY = granData->vY[myOwner];
+    double myVZ = granData->vZ[myOwner];
+    quantity[myOwner] = myVX * myVX + myVY * myVY + myVZ * myVZ;
 )V0G0N";
 
 const std::string INSP_CODE_EVERYTHING_ABSANGVEL = R"V0G0N(
@@ -147,6 +155,15 @@ void DEMInspector::switch_quantity_type(const std::string& quantity) {
             index_name = "myOwner";
             all_domain = false;  // Only clumps, so not all domain owners
             break;
+        case ("clump_rms_absv"_):
+            inspection_code = INSP_CODE_CLUMP_V2;
+            reduce_flavor = CUB_REDUCE_FLAVOR::SUM;
+            kernel_name = "inspectOwnerProperty";
+            thing_to_insp = INSPECT_ENTITY_TYPE::CLUMP;
+            index_name = "myOwner";
+            all_domain = false;
+            isRMS = true;
+            break;
         case ("clump_mass"_):
             inspection_code = INSP_CODE_CLUMP_APPROX_MASS;
             reduce_flavor = CUB_REDUCE_FLAVOR::SUM;
@@ -221,6 +238,13 @@ float DEMInspector::GetValue() {
     assertInit();
     float reduce_result = sys->dTInspectReduce(inspection_kernel, kernel_name, thing_to_insp, reduce_flavor, all_domain,
                                                m_reduceResArr, m_reduceRes);
+    if (isRMS) {
+        const size_t n = sys->GetNumClumps();
+        if (n == 0)
+            return 0.f;
+        const double mean_v2 = static_cast<double>(reduce_result) / static_cast<double>(n);
+        return static_cast<float>(std::sqrt(mean_v2 > 0.0 ? mean_v2 : 0.0));
+    }
     return reduce_result;
 }
 

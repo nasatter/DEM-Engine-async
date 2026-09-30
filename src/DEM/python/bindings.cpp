@@ -133,7 +133,7 @@ PYBIND11_MODULE(_deme, obj) {
 
         // Setting path prefix
         std::filesystem::path path = loc;
-        DEMERuntimeDataHelper::SetPathPrefix(path);
+        // Local-prefix build: keep compiled DEME runtime-data path.
     } catch (const py::error_already_set& e) {
         // If all else fails, don't set the prefix and let the system use default paths
         py::print(
@@ -1232,6 +1232,10 @@ enabled. A zero count is a no-op.)doc",
         .def("SetAdaptiveTimeStepType", &deme::DEMSolver::SetAdaptiveTimeStepType,
              "Set the strategy for auto-adapting time step size. Currently, hertz_const computes one fixed setup-time "
              "timestep; max_vel and int_diff are accepted but not implemented.")
+        .def("SetAdaptiveTimeStepMaxVelParams", &deme::DEMSolver::SetAdaptiveTimeStepMaxVelParams,
+             py::arg("min_ts"), py::arg("vel_low"), py::arg("vel_high"),
+             py::arg("growth_factor") = 1.25f,
+             "Configure native asynchronous max-velocity adaptive stepping; SetTimeStepSize is the maximum.")
         .def("UseHertzConstTimeStep", &deme::DEMSolver::UseHertzConstTimeStep,
              "Use the setup-time Hertzian constant timestep estimate.")
         .def("SetIntegrator",

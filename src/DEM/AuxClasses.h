@@ -31,6 +31,8 @@ class DEMInspector {
     std::string kernel_name;
     bool all_domain = true;
     bool isVoidRatio = false;
+    // Native clump RMS speed inspector: SUM(v^2) on GPU, sqrt(sum/N) on host scalar.
+    bool isRMS = false;
 
     bool initialized = false;
 

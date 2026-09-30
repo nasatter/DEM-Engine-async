@@ -2513,6 +2513,8 @@ inline void DEMDynamicThread::unpackMyBuffer() {
 }
 
 inline void DEMDynamicThread::sendToTheirBuffer() {
+    // DEME_ASYNC_MAXVEL_PATCH: adaptive hook. pCycleVel is the velocity array already destined for kT; update h before either value is copied.
+    updateAdaptiveTimeStepFromVelocity();
     DEME_GPU_CALL(cudaMemcpy(granData->pKTOwnedBuffer_voxelID, granData->voxelID,
                              simParams->nOwnerBodies * sizeof(voxelID_t), cudaMemcpyDeviceToDevice));
     DEME_GPU_CALL(cudaMemcpy(granData->pKTOwnedBuffer_locX, granData->locX,
@@ -3357,6 +3359,39 @@ inline void DEMDynamicThread::determineSysVel() {
     // Get angular velocity magnitude
     pCycleAngVel = approxAngVelFunc->dT_GetDeviceValues();
 }
+inline void DEMDynamicThread::updateAdaptiveTimeStepFromVelocity() {
+    // DEME_ASYNC_MAXVEL_PATCH: native dT adaptive implementation.
+    if (solverFlags.isStepConst || !adaptiveTsConfigured || pCycleVel == nullptr || simParams->nOwnerBodies == 0)
+        return;
+
+    cubMaxReduce<float>(pCycleVel, &(adaptiveMaxVel), simParams->nOwnerBodies, streamInfo.stream, solverScratchSpace);
+    adaptiveMaxVel.toHost();
+    const float vmax = *(adaptiveMaxVel);
+    lastAdaptiveMaxVel = vmax;
+    if (!std::isfinite(vmax))
+        DEME_ERROR("Native adaptive timestep observed non-finite maximum velocity.");
+
+    double target = adaptiveDtMax;
+    if (vmax >= adaptiveVelHigh) {
+        target = adaptiveDtMin;
+    } else if (vmax > adaptiveVelLow) {
+        const double a = (double)(vmax - adaptiveVelLow) / (double)(adaptiveVelHigh - adaptiveVelLow);
+        target = adaptiveDtMax * std::pow(adaptiveDtMin / adaptiveDtMax, a);
+    }
+
+    const double old_h = (double)simParams->dyn.h;
+    double new_h = target;
+    // Reductions are immediate; timestep recovery is deliberately gradual.
+    if (target > old_h)
+        new_h = std::min(target, old_h * (double)adaptiveGrowthFactor);
+    new_h = std::max(adaptiveDtMin, std::min(adaptiveDtMax, new_h));
+
+    if (std::abs(new_h - old_h) > 1e-15) {
+        simParams->dyn.h = new_h;
+        simParams.toDevice();
+    }
+}
+
 
 inline void DEMDynamicThread::unpack_impl() {
     LostContactDebugSnapshot oldContactSnapshot;
@@ -3635,9 +3670,7 @@ void DEMDynamicThread::workerThread() {
             // dynamicOwned_Prod2ConsBuffer_isFresh is false so ifProduceFreshThenUseItAndSendNewOrder didn't run, then
             // kT has to be in the process of doing a CD, we still will not be locked here.
 
-            // If using variable ts size, only when a step is accepted can we move on
-            bool step_accepted = false;
-            do {
+            // DEME_ASYNC_MAXVEL_PATCH: variable-step integration. h is selected proactively at kT refreshes.
                 calculateForces();
 
                 routineChecks();
@@ -3649,8 +3682,7 @@ void DEMDynamicThread::workerThread() {
                 timers.AccumulateGpuTimer("Optional force reduction");
                 timers.AccumulateGpuTimer("Integration");
 
-                step_accepted = true;
-            } while ((!solverFlags.isStepConst) || (!step_accepted));
+
 
             //// TODO: make changes for variable time step size cases
             // Keep the host copy authoritative for API queries. integrateOwners also writes the same next time into

@@ -869,6 +869,16 @@ class DEMDynamicThread {
 
     // A pointer that points to the location that holds the current max_vel info, which will soon be transferred to kT
     float* pCycleVel;
+
+    // DEME_ASYNC_MAXVEL_PATCH: native asynchronous max-velocity timestep controller.
+    DualStruct<float> adaptiveMaxVel = DualStruct<float>(0.f);
+    bool adaptiveTsConfigured = false;
+    double adaptiveDtMin = 0.0;
+    double adaptiveDtMax = 0.0;
+    float adaptiveVelLow = 0.3f;
+    float adaptiveVelHigh = 1.0f;
+    float adaptiveGrowthFactor = 1.25f;
+    float lastAdaptiveMaxVel = 0.0f;
     // Pointer that points to the location that holds the current angular velocity magnitude info, which will soon be
     // transferred to kT
     float* pCycleAngVel;
@@ -912,6 +922,9 @@ class DEMDynamicThread {
 
     // Determine the vel info for this cycle, kT needs it
     inline void determineSysVel();
+    // DEME_ASYNC_MAXVEL_PATCH: update simParams->h using the pCycleVel array already produced for kT.
+    inline void updateAdaptiveTimeStepFromVelocity();
+
 
     // Some per-step checks/modification, done before integration, but after force calculation (thus sort of in the
     // mid-step stage)

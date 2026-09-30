@@ -138,9 +138,15 @@ class DEMSolver {
     /// Fill reusable owner arrays at a synchronized simulation boundary; never call concurrently with dynamics.
     void GetVisualizationFrame(DEMVisualizationFrame& frame, bool include_velocities = false) const;
     /// @brief Set the strategy for auto-adapting time step size.
-    /// @param type "none", "hertz_const", "max_vel" or "int_diff". Currently, only "hertz_const" has behavior; it
-    /// computes a fixed setup-time timestep from Hertzian material stiffness, minimum clump mass, and minimum radius.
+    /// @param type "none", "hertz_const", "max_vel" or "int_diff". This patched build implements native
+    /// asynchronous "max_vel" adaptation inside dT without Python polling.
     void SetAdaptiveTimeStepType(const std::string& type);
+    /// @brief Configure native MAX_VEL adaptive stepping. The current SetTimeStepSize/SetInitTimeStep value is the
+    /// maximum step. Reductions happen immediately; increases are growth-limited per normal kT refresh.
+    void SetAdaptiveTimeStepMaxVelParams(double min_ts,
+                                         float vel_low,
+                                         float vel_high,
+                                         float growth_factor = 1.25f);
     /// @brief Use the setup-time Hertzian constant timestep estimate.
     void UseHertzConstTimeStep() { SetAdaptiveTimeStepType("hertz_const"); }
 
@@ -2179,8 +2185,12 @@ class DEMSolver {
     std::shared_ptr<DEMForceModel> m_force_model =
         std::make_shared<DEMForceModel>(std::move(DEMForceModel(FORCE_MODEL::HERTZIAN)));
 
-    // Strategy for auto-adapting time steps size
+    // Strategy for auto-adapting time step size. m_ts_size remains the user-configured maximum step.
     ADAPT_TS_TYPE adapt_ts_type = ADAPT_TS_TYPE::NONE;
+    double adaptive_ts_min = 0.0;
+    float adaptive_ts_vel_low = 0.3f;
+    float adaptive_ts_vel_high = 1.0f;
+    float adaptive_ts_growth_factor = 1.25f;
 
     ////////////////////////////////////////////////////////////////////////////////
     // No user method is provided to modify the following key quantities, even if

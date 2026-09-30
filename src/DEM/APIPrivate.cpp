@@ -1216,7 +1216,18 @@ void DEMSolver::setSolverParams() {
     dT->solverFlags.isHistoryless = (m_force_model->m_contact_wildcards.size() == 0);
 
     // Time step constant-ness and expand factor constant-ness
-    dT->solverFlags.isStepConst = ts_size_is_const;
+    // DEME_ASYNC_MAXVEL_PATCH: initialize worker-side native adaptation.
+    dT->solverFlags.isStepConst = (adapt_ts_type != ADAPT_TS_TYPE::MAX_VEL) ? ts_size_is_const : false;
+    if (adapt_ts_type == ADAPT_TS_TYPE::MAX_VEL) {
+        dT->adaptiveTsConfigured = true;
+        dT->adaptiveDtMin = (adaptive_ts_min > 0.0) ? adaptive_ts_min : m_ts_size / 3.0;
+        dT->adaptiveDtMax = m_ts_size;
+        dT->adaptiveVelLow = adaptive_ts_vel_low;
+        dT->adaptiveVelHigh = adaptive_ts_vel_high;
+        dT->adaptiveGrowthFactor = adaptive_ts_growth_factor;
+    } else {
+        dT->adaptiveTsConfigured = false;
+    }
     kT->solverFlags.isExpandFactorFixed = use_user_defined_expand_factor;
 
     // Jitify or not
